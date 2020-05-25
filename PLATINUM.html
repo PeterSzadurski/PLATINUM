@@ -1,0 +1,464 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>PLATINUM</title>
+
+<!-- Welcome to ZIM at http://zimjs.com - Code Interactive Media Pizzazz! 				-->
+<!-- ZIM runs on the HTML Canvas powered by JavaScript and CreateJS http://createjs.com -->
+<!-- Founded by Inventor Dan Zen - http://danzen.com - Canadian New Media Award Winner 	-->
+<!-- ZIM is free to use. You can donate to help improve ZIM at http://zimjs.com/donate 	-->
+
+<script src="https://d309knd7es5f10.cloudfront.net/createjs.min.js"></script>
+<script>
+	var zon = true; // set to false to turn off console messages from zim
+	var zns = false; // set to true to require zim namespace - eg. new zim.Frame()
+</script>
+<script src="https://d309knd7es5f10.cloudfront.net/zim_6.8.0.js"></script><!-- add _doc to see code -->
+<!-- use zimjs.com/distill for minified individual functions! -->
+
+<script>
+
+// SCALING OPTIONS
+// scaling can have values as follows with full being the default
+// "fit"		sets canvas anåd stage to dimensions and scales to fit inside window size
+// "outside"	sets canvas and stage to dimensions and scales to fit outside window size
+// "full"		sets stage to window size with no scaling
+// "tagID"		add canvas to HTML tag of ID - set to dimensions if provided - no scaling
+
+var scaling = "fit"; // fit scales to fit the browser window while keeping the aspect ratio
+var width = 1024; // can go higher...
+var height = 768;
+var frame = new Frame(scaling, width, height); // see docs for more options and info
+frame.on("ready", function() {
+	zog("ready from ZIM Frame");
+
+	var stage = frame.stage;
+	var stageW = frame.width;
+	var stageH = frame.height;
+	frame.color = frame.black;
+	frame.outerColor = frame.dark;
+	//window.addEventListener ('keydown', function (e)
+
+	// put your code here (you can delete this code)
+	var combo = 0;
+	var comboScore = 0;
+	var score = 0;
+	var points;
+	var health = 3;
+	var spawnRate = 1500;
+	var playerRotation;
+	var playerShoot = false;
+	var adjustmentAngle = 270;
+	var scoreCap = 9999999;
+	var noInput = false;
+	var laser = new Circle;
+	var explosion = new Circle;
+
+// source for number padding function
+// just used for text styling, not a critical part of the game
+// https://stackoverflow.com/questions/6466135/adding-extra-zeros-in-front-of-a-number-using-jquery
+	function pad (str, max) {
+	  str = str.toString();
+	  return str.length < max ? pad("0" + str, max) : str;
+	}
+
+	var assets = ["podSprite.png", "boom.mp3", "combo.mp3", "Hit_03.mp3", "shoot.mp3", {font:"hud", src: "ndsbios_memesbruh03.ttf"}];
+	loop(7, function(i) {
+		var name = "a" + i + ".png";
+		assets.push(name);
+	});
+
+	frame.loadAssets(assets, "assets/");
+	frame.on("complete", function() {
+
+// create he pod
+
+		var pod = new Sprite(frame.asset("podSprite.png"), 2, 3, {light:[2,3], dark:[4,5]})
+			.sca(.1)
+			.centerReg();
+
+
+		var controller = new MotionController({
+			container:stage,
+			target:pod,
+			firstPerson:"true",
+			type:"keydown",
+			turnSpeed:7*.9,
+			// left, right, up, down
+			map: [[65,37], [68,39], [87,38], [null,null]],
+			rotate:true,
+			moveThreshold:0,
+			rect:{x:0, y:0, width:stageW-pod.width, height:stageH-pod.height}
+		});
+
+// create a gamepad for extra buttons (shooting)
+
+		var gamePad = new GamePad();
+		gamePad.on("gamepaddisconnected", function(){
+			frame.on("keydown", keydownEvent);
+			frame.on("keyup", keyupEvent);
+		});
+		// shoot button, shooting stops health regen to prevent spamming
+		var keydownEvent = frame.on("keydown", function(e) {
+			if((e.key == "z") && playerShoot == false && health > 0 && noInput == false){
+				// stop health regen while shooting
+				clearInterval(healthRegen);
+				healthRegen = setInterval(healthRegenFunct, 3000);
+				attack(pod);
+				playerShoot = true;
+			}
+		});
+
+		var keyupEvent = frame.on("keyup", function(e){
+			if(e.key == "z"){
+				playerShoot = false;
+			}
+		})
+
+
+
+		var asteroids = new Container(stageW, stageH).addTo();
+
+
+		var title = new Label({
+			text:"PLATINUM",
+			align: "center",
+			color:frame.white,
+			font:"hud"
+		}).pos(512,10,stage);
+
+		var scoreDisplay = new Label({
+			text:"0000000",
+			color:frame.white,
+			font:"hud"
+		}).pos(10,10,stage);
+
+		var comboDisplay = new Label({
+			text:"",
+			color:frame.white,
+			font:"hud"
+		}).pos(995,38,stage);
+
+		var comboScoreDisplay = new Label({
+			text:"0000000",
+			color:frame.white,
+			font:"hud"
+		}).pos(930,10,stage);
+
+		// function for shooting
+
+		function attack (attacker){
+
+
+				laser = new Circle(5, 5, "white")
+					.centerReg()
+					//.clone()
+					.pos(attacker.x, attacker.y)
+					.rot(controller.rotation)
+						frame.asset("shoot.mp3").play();
+					if (playerRotation >= 0){
+						// formula for how the laser fires. Taken from firstperson in MotionController class.
+					 laser.animate({obj:{x:(attacker.x + ((700*Math.cos(playerRotation * Math.PI/180))) )
+					 	, y:(attacker.y + ((700*Math.sin(playerRotation * Math.PI/180))) )},
+						time:300,
+					call:function(target){
+						target.removeFrom(stage);
+					}
+				})
+					}
+					else if (playerRotation < 0){
+						// a slightly modified formula was needed when rotation was less than 0 or else the shot would be backwards
+						laser.animate({obj:{x:(attacker.x + ((1500*Math.cos(playerRotation * Math.PI/180)* -1)) )
+						 , y:(attacker.y + ((1500*Math.sin(playerRotation * Math.PI/180)) * -1) )},
+						 time:1000,
+						 call:function(target){
+							 target.removeFrom(stage);
+						 }
+					 })
+					}
+
+
+
+
+		};
+
+		// check if laser hit the asteroid
+
+					Ticker.add(function() {
+						asteroids.loop(function(asteroid) {
+							if (asteroid.hitTestCircle(laser)) {
+								explode (asteroid);
+								laser.removeFrom(stage);
+							}
+						}, true)
+					});
+
+// explode function, works on both pod and asteroid. Supports chaining of
+// explosions
+
+		function explode (target){
+			clearInterval(comboDecay);
+			comboDecay = setInterval(comboReset, 3500);
+			points = 10;
+			comboCounter(points);
+			explosion = new Circle(10, "black", "white")
+				.centerReg()
+				.pos(target.x, target.y)
+				.animate({obj:{scale:13, alpha:0}, time:700, call:function(target){
+					target.removeFrom(stage);
+				}})
+
+
+			frame.asset("boom.mp3").play();
+
+			target.removeFrom(asteroids);
+			target.removeFrom(stage);
+
+
+
+
+		}
+
+		// explosion chaining
+
+					Ticker.add(function() {
+						asteroids.loop(function(asteroid) {
+							if (asteroid.hitTestCircle(explosion)) {
+								explode (asteroid);
+							}
+						}, true)
+					});
+
+// pod hit detection, checks for health, causes explosion
+
+		Ticker.add(function() {
+			asteroids.loop(function(asteroid) {
+				if (asteroid.hitTestReg(pod)) {
+					frame.asset("Hit_03.mp3").play();
+					// reset the health regen
+					clearInterval(healthRegen);
+					healthRegen = setInterval(healthRegenFunct, 3000);
+					explode (asteroid);
+					health--;
+					checkHealth();
+					if (health <= 0){
+						dead();
+					}
+				}
+			}, true)
+		});
+
+
+
+		var buffer = 400;
+		setInterval(makeAsteroid, spawnRate);
+		makeAsteroid(); // hoisting
+		function makeAsteroid() {
+			zog("makeAsteroid");
+
+			var data = [
+				[0-buffer, rand(stageH), stageW+buffer, rand(stageH)], // left to right
+				[rand(stageW), 0-buffer, rand(stageW), stageH+buffer], // top to bottom
+				[stageW+buffer, rand(stageH), 0-buffer, rand(stageH)], // right to left
+				[rand(stageW), stageH+buffer, rand(stageW), 0-buffer]  // bottom to top
+			];
+			// var choice = Math.floor(math.random()*data.length);
+			// var choice = rand(data.length-1);
+			// var choiceData = data[choice]; // []
+			var choiceData = shuffle(data)[0]; // []
+
+			frame.asset("a" + rand(6) + ".png")
+				.clone()
+				.centerReg(asteroids)
+				.pos(choiceData[0], choiceData[1])
+				.animate({
+					obj:{rotation:360},
+					time:3000,
+					ease:"linear",
+					loop:true
+				})
+				.animate({
+					obj:{x:choiceData[2], y:choiceData[3]},
+					time:5000,
+					ease:"linear",
+					override:false,
+					call:function(target) {
+						target.removeFrom(asteroids);
+					}
+				});
+		}
+
+		// for reseting the hud color
+		function setHudWhite(){
+			comboDisplay.color = frame.white;
+			comboScoreDisplay.color = frame.white;
+			title.color = frame.white;
+			scoreDisplay.color = frame.white;
+		}
+
+		// score system
+		// ends combo if no new points after 3.5 seconds
+		var comboDecay = setInterval(comboReset, 3500);
+		 		function comboReset(){
+					frame.color = frame.black;
+					if (noInput == false && combo > 0){
+						frame.asset("combo.mp3").play();
+					}
+					combo = 0;
+		 			score += comboScore;
+					if (score < scoreCap){
+						scoreDisplay.text = pad(score, 7);
+					}
+					else {
+						scoreDisplay.text = scoreCap;
+					}
+
+					comboDisplay.text = "";
+					comboScoreDisplay.text = "0000000";
+					comboDisplay.color = frame.white;
+					comboScoreDisplay.color = frame.white;
+					title.color = frame.white;
+					scoreDisplay.color = frame.white;
+					pod.gotoAndStop(0);
+					comboScore = 0;
+		 	}
+
+			// counts the combo and multiplies the points from it.
+			// caps at x25
+
+		 function comboCounter (points) {
+			 combo += 1;
+			 if (combo < 25) {
+			 	comboScore += (points * combo );
+				comboDisplay.text = ("x" + combo);
+				if (combo > 9) {
+					comboDisplay.pos(982,38,stage);
+				}
+				else {
+					comboDisplay.pos(995,38,stage);
+				}
+		 	}
+			else {
+				comboScore += (points * 25);
+				comboDisplay.text =  ("MAX!");
+				comboDisplay.pos(975,38,stage);
+
+			}
+			if (comboScore < scoreCap) {
+			comboScoreDisplay.text = pad(comboScore, 7);
+		 }
+		 else {
+			 comboScoreDisplay.text = scoreCap;
+		 }
+	 }
+
+		 // regenenrate health
+		var healthRegen = setInterval(healthRegenFunct(), 3000);
+
+		 function healthRegenFunct(){
+			 checkHealth();
+				if (health < 3){
+					health++;
+				}
+				else if ((health < 4) && (combo > 24)){
+					 health++;
+							}
+				checkHealth();
+			}
+			// check state of health, background color changes depending on the health of the player
+		 function checkHealth(){
+			 if (health == 4){ // health of 4 can only be achived with a max combo, its like a special mode
+				 comboDisplay.color = frame.black;
+				 comboScoreDisplay.color = frame.black;
+				 title.color = frame.black;
+				 scoreDisplay.color = frame.black;
+				 pod.gotoAndStop(3);
+				 frame.color = "white";
+			 }
+			 if (health == 3){
+				 setHudWhite();
+				 pod.gotoAndStop(0); // resets the pod color from special mode
+				 frame.color = "black";
+			 }
+			 else if (health == 2){
+				 setHudWhite();
+				 pod.gotoAndStop(0); // resets the pod color from special mode
+				 frame.color = "#ff7402"; // orange
+			 }
+			 else if (health == 1){
+				 setHudWhite();
+				 pod.gotoAndStop(0); // resets the pod color from special mode
+				 frame.color = "#d00202"; // red
+			 }
+		 };
+
+		 // function activates when health is less than 1
+		 function dead(){
+			 explode(pod);
+			 var noInput = true;
+			 controller.enabled = false;
+			 // array for a large amount of game over messages. Mostly condescending
+			 var endText = ["BETTER LUCK NEXT TIME", ".5 SECONDS TOO LATE", "TRY AGAIN", "TRY DODGING", "YOU'RE A LOOSE CANNON MCBAIN",
+		  "BELIEVE IN THE ASTEROID THAT BELIEVES IN YOU", "TRY AIMING", "...", "!!!", "PLUG IN YOUR KEYBOARD", "IS THAT ALL?",
+		 	"YOU'LL GET BETTER", "WAS THAT IT?", "TURN OFF STICKY-KEYS", "YOU'LL GET USED TO IT", "SMASH THAT FIRE BUTTON",
+	 		"DO YOU THINK GAMES ARE SILLY LITTLE THINGS?"];
+			 var gameOver = new Label({
+				 align:"center",
+				 color:frame.white,
+				 font:"hud"
+			 }).pos((stageW / 2),(stageH / 2),stage);
+			 gameOver.text = shuffle(endText)[0];
+		 }
+
+		 // function updates playerRotation, a similar to controller.rotaion except it will not be greater than 360 or less than -360.
+		 // makes it more useable to calculate the angle of the laser
+		 // adjustmentAngle corrects the angle further, allowing the player to shoot straight instead of sideways
+
+		 Ticker.add(function(){
+			 var anotherTest = controller.rotaion;
+
+			 if ((controller.rotation + adjustmentAngle) > 360){
+				 //playerRotation = 0;
+				 playerRotation = ((controller.rotation + adjustmentAngle) - ( 360 * (Math.floor((controller.rotation + adjustmentAngle) / 360))));
+			 }
+			 else if ((controller.rotation - adjustmentAngle) < -360){
+				// playerRotation = 0;
+				 playerRotation = ((controller.rotation - adjustmentAngle) + ( 360 * (Math.floor((controller.rotation - adjustmentAngle) / -360))));
+				 }
+				else {
+					playerRotation = controller.rotation + adjustmentAngle;
+				}
+		 })
+
+		 // increase game difficulty as time goes on, like an old arcade game
+		 setInterval(function(){
+			 if (spawnRate > 600){
+				 spawnRate -= 200;
+				 clearInterval(makeAsteroid);
+				 setInterval(makeAsteroid, spawnRate);
+			 }
+		 }, 30000)
+
+
+
+
+
+		stage.update(); // update the stage to see any changes
+
+	}); // end of load assets
+
+}); // end of ready
+</script>
+
+
+
+
+
+
+</head>
+
+<body>
+<!-- canvas with id="myCanvas" is made by zim Frame -->
+</body>
+</html>
